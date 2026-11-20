@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signed() { return request.auth != null; }
+    function own(uid) { return signed() && request.auth.uid == uid; }
+    function admin() { return signed() && request.auth.token.admin == true; }
+    function shareAllowed(id) {
+      let s = get(/databases/$(database)/documents/locationShareSessions/$(id)).data;
+      return signed() && s.status == 'active' && s.expiresAt > request.time
+        && exists(/databases/$(database)/documents/friendships/$(s.friendshipId))
+        && !exists(/databases/$(database)/documents/users/$(s.ownerId)/blocks/$(s.invitedViewerId))
+        && !exists(/databases/$(database)/documents/users/$(s.invitedViewerId)/blocks/$(s.ownerId))
+        && (s.ownerId == request.auth.uid || request.auth.uid in s.viewerIds);
+    }
+    match /users/{uid} {
+      allow read: if own(uid);
+      allow create: if own(uid) && request.resource.data.keys().hasOnly(['displayName', 'createdAt'])
+        && request.resource.data.displayName is string && request.resource.data.displayName.size() <= 100
+        && request.resource.data.createdAt == request.time;
+      allow update: if own(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName'])
+        && request.resource.data.displayName is string && request.resource.data.displayName.size() <= 100;
+      match /receivedShares/{id} { allow read: if own(uid); allow write: if false; }
+      match /blocks/{id} { allow read: if own(uid); allow write: if false; }
+    }
+    match /userPreferences/{uid} {
+      allow read: if own(uid);
+      allow write: if own(uid) && request.resource.data.keys().hasOnly(['dark', 'units', 'notifications'])
+        && request.resource.data.dark is bool && request.resource.data.units in ['metric', 'imperial']
+        && request.resource.data.notifications is bool;
+    }
+    match /buildings/{id} {
+      allow read: if signed() && (resource.data.published == true || admin());
+      allow create, update: if admin() && request.resource.data.name is string
+        && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 150
+        && request.resource.data.verified is bool && request.resource.data.published is bool
+        && (!request.resource.data.verified || (request.resource.data.latitude is number
+          && request.resource.data.latitude >= -90 && request.resource.data.latitude <= 90
+          && request.resource.data.longitude is number && request.resource.data.longitude >= -180 && request.resource.data.longitude <= 180));
+      allow delete: if admin();
+    }
+    match /{collection}/{id} {
+      allow read: if collection in ['buildingEntrances','floors','floorPlans','rooms','campusPaths','indoorPaths','qrCheckpoints','campusBoundaries']
+        && signed() && (resource.data.verified == true || admin());
+      allow write: if collection in ['buildingEntrances','floors','floorPlans','rooms','campusPaths','indoorPaths','qrCheckpoints','campusBoundaries'] && admin();
+    }
+    match /friendRequests/{id} {
+      allow read: if signed() && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow write: if false;
+    }
+    match /friendships/{id} { allow read: if signed() && request.auth.uid in resource.data.members; allow write: if false; }
+    match /locationShareSessions/{id} {
+      allow read: if signed() && (resource.data.ownerId == request.auth.uid || shareAllowed(id));
+      allow write: if false;
+    }
+    match /locationShareInvitations/{id} {
+      allow read: if signed() && (resource.data.ownerId == request.auth.uid || resource.data.viewerId == request.auth.uid)
+        && resource.data.expiresAt > request.time;
+      allow write: if false;
+    }
+    match /locationUpdates/{id} { allow read: if shareAllowed(id); allow write: if false; }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

@@ -1,0 +1,5 @@
+{"indexes": [
+  {"collectionGroup":"locationShareSessions","queryScope":"COLLECTION","fields":[{"fieldPath":"ownerId","order":"ASCENDING"},{"fieldPath":"invitedViewerId","order":"ASCENDING"}]},
+  {"collectionGroup":"floors","queryScope":"COLLECTION","fields":[{"fieldPath":"buildingId","order":"ASCENDING"},{"fieldPath":"verified","order":"ASCENDING"}]},
+  {"collectionGroup":"rooms","queryScope":"COLLECTION","fields":[{"fieldPath":"buildingId","order":"ASCENDING"},{"fieldPath":"verified","order":"ASCENDING"}]}
+], "fieldOverrides": []}
